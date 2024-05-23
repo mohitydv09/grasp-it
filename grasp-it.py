@@ -1,7 +1,5 @@
 import numpy as np
 from cgn.contact_graspnet_pytorch.inference import CGN
-# contact_graspnet_pytorch/contact_graspnet_pytorch/inference.py
-## Get input from realsence to get the depth image.
 
 
 ## Get Segmentation from Grounded SAM
