@@ -1,60 +1,63 @@
 import open3d as o3d
 import numpy as np
-import cv2
+import cv2``
 import rtde_receive
 import rtde_control
-from tag_detector import get_aruco_pose
 
+class Open3DVisualizer:
+    def __init__(self):
+        pass
 
+    def create_grid(self,size=10, step=0.1):
+        lines = []
+        points = []
 
-def create_grid(size=10, step=0.1):
-    lines = []
-    points = []
-
-    # Create grid points and lines in the X-Y plane
-    for i in range(-size, size + 1, step):
-        points.append([i, -size, 0])
-        points.append([i, size, 0])
-        points.append([-size, i, 0])
-        points.append([size, i, 0])
+        # Create grid points and lines in the X-Y plane
+        for i in range(-size, size + 1, step):
+            points.append([i, -size, 0])
+            points.append([i, size, 0])
+            points.append([-size, i, 0])
+            points.append([size, i, 0])
+            
+            lines.append([len(points) - 4, len(points) - 3])
+            lines.append([len(points) - 2, len(points) - 1])
         
-        lines.append([len(points) - 4, len(points) - 3])
-        lines.append([len(points) - 2, len(points) - 1])
-    
-    # Create grid points and lines in the X-Z plane
-    for i in range(-size, size + 1, step):
-        points.append([i, 0, -size])
-        points.append([i, 0, size])
-        points.append([-size, 0, i])
-        points.append([size, 0, i])
+        # Create grid points and lines in the X-Z plane
+        for i in range(-size, size + 1, step):
+            points.append([i, 0, -size])
+            points.append([i, 0, size])
+            points.append([-size, 0, i])
+            points.append([size, 0, i])
+            
+            lines.append([len(points) - 4, len(points) - 3])
+            lines.append([len(points) - 2, len(points) - 1])
         
-        lines.append([len(points) - 4, len(points) - 3])
-        lines.append([len(points) - 2, len(points) - 1])
-    
-    # Create grid points and lines in the Y-Z plane
-    for i in range(-size, size + 1, step):
-        points.append([0, i, -size])
-        points.append([0, i, size])
-        points.append([0, -size, i])
-        points.append([0, size, i])
-        
-        lines.append([len(points) - 4, len(points) - 3])
-        lines.append([len(points) - 2, len(points) - 1])
+        # Create grid points and lines in the Y-Z plane
+        for i in range(-size, size + 1, step):
+            points.append([0, i, -size])
+            points.append([0, i, size])
+            points.append([0, -size, i])
+            points.append([0, size, i])
+            
+            lines.append([len(points) - 4, len(points) - 3])
+            lines.append([len(points) - 2, len(points) - 1])
 
-    # Convert to numpy arrays
-    points = np.array(points)
-    lines = np.array(lines)
+        # Convert to numpy arrays
+        points = np.array(points)
+        lines = np.array(lines)
 
-    # Create line set
-    line_set = o3d.geometry.LineSet()
-    line_set.points = o3d.utility.Vector3dVector(points)
-    line_set.lines = o3d.utility.Vector2iVector(lines)
+        # Create line set
+        line_set = o3d.geometry.LineSet()
+        line_set.points = o3d.utility.Vector3dVector(points)
+        line_set.lines = o3d.utility.Vector2iVector(lines)
 
-    # Set color for the grid lines
-    colors = [[0.8, 0.8, 0.8] for _ in range(len(lines))]
-    line_set.colors = o3d.utility.Vector3dVector(colors)
+        # Set color for the grid lines
+        colors = [[0.8, 0.8, 0.8] for _ in range(len(lines))]
+        line_set.colors = o3d.utility.Vector3dVector(colors)
 
-    return line_set
+        return line_set
+
+
 
 # Add the base Frame.
 base_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0,0,0])
