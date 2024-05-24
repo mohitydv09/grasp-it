@@ -3,7 +3,7 @@ import numpy as np
 import cv2
 import rtde_receive
 import rtde_control
-from apriltag import get_aruco_pose
+from tag_detector import get_aruco_pose
 
 
 

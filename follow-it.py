@@ -1,17 +1,24 @@
-import pyrealsense2 as rs
 import numpy as np
 import cv2
 import threading
 import queue
 import time
-import rtde_receive
-import rtde_control
-from scipy.spatial.transform import Rotation as R
+
+import rtde_receive # type: ignore
+import rtde_control # type: ignore
+
+from realsense import RealSenceStream
+from tag_detector import ArucoDetector
 
 ## Connect to the robot. Setup RTDE receive and control interface.
 LIGHTNING_IP = "192.168.0.102"
 reciever = rtde_receive.RTDEReceiveInterface(LIGHTNING_IP)
 controller = rtde_control.RTDEControlInterface(LIGHTNING_IP)
+
+## Start RealSense Stream.
+rs_stream = RealSenceStream(visualization=False)
+
+rs_stream.stop()
 
 # while True:
 #     time.sleep(0.1)
@@ -26,13 +33,13 @@ controller = rtde_control.RTDEControlInterface(LIGHTNING_IP)
 #     current_eff_ps[5] += -0.73
     # controller.moveL(current_eff_ps,0.1,0.1)
 
-controller.moveL([-0.400303615706161, 0.10037057867020892, 0.9578918260330468,
-                   -1.4658670169242356, -1.642197804985105, 1.0122059450126883],0.1,0.1)
+# controller.moveL([-0.400303615706161, 0.10037057867020892, 0.9578918260330468,
+#                    -1.4658670169242356, -1.642197804985105, 1.0122059450126883],0.1,0.1)
 
-## Configure the colow stream.
-pipeline = rs.pipeline()
-config = rs.config()
-config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+# ## Configure the colow stream.
+# pipeline = rs.pipeline()
+# config = rs.config()
+# config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
 
 def get_position(q):
     ## Start streaming
