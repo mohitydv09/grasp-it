@@ -62,7 +62,7 @@ class Detector:
     def get_aruco_pose(self):
         ## Detect Aruco Marker in the image
         if self.color_image is None:
-            print("No Image Detected")
+            # print("No Image Detected")
             return None,None
         corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(self.color_image, self.aruco_dict, parameters=self.aruco_params)
         rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners, self.aruco_size, self.intrinsics_matrix, self.distortion_matrix)
@@ -81,13 +81,13 @@ class Detector:
             cv2.destroyAllWindows()
 
         if rvecs is None:
-            print("No Aruco Marker Detected")
+            # print("No Aruco Marker Detected")
             return None, None
         if len(rvecs) == 0:
-            print("No Aruco Marker Detected")
+            # print("No Aruco Marker Detected")
             return None, None
         if len(rvecs) > 1:
-            print("More than one Aruco Marker Detected")
+            # print("More than one Aruco Marker Detected")
             return None, None
         return rvecs, tvecs
 
@@ -103,10 +103,10 @@ class Detector:
 
         rvecs, tvecs = self.get_aruco_pose()
         if rvecs is None:
-            print("Marker Detection Error")
+            # print("Marker Detection Error")
             return None, None, None, None, None
         elif len(rvecs) > 1:
-            print("More than one Marker Detected")
+            # print("More than one Marker Detected")
             return None, None, None, None, None
         T_cam2tag = self.make_matrix(tvecs[0][0], rvecs[0][0])
         T_cam2tag[0:3, 0:3] = T_cam2tag[0:3, 0:3] @ o3d.geometry.get_rotation_matrix_from_xyz(np.array([np.pi, 0, 0]))
@@ -146,6 +146,144 @@ class Detector:
         T[0:3, 3] = tvec
         return T
 
+class Open3dVisualizer:
+    def __init__(self, detector, robot):
+        self.vis = o3d.visualization.Visualizer()
+        self.vis.create_window()
+        self.robot = robot
+        self.detector = detector
+        self.running = True
+
+
+        self.curr_eff_pose = self.robot.get_eff_pose()
+        robot_target, T_w2eef, T_w2cam, T_w2tag, T_w2target = self.detector.get_target_pose(self.curr_eff_pose, require_matrices=True)
+        self.robot_target = robot_target
+        self.T_w2eef = T_w2eef
+        self.T_w2cam = T_w2cam
+        self.T_w2tag = T_w2tag
+        self.T_w2target = T_w2target
+
+        self.base_frame = self.create_base_frame()
+        self.eef_frame = self.create_eef_frame()
+
+        self.vis.add_geometry(self.base_frame)
+        self.vis.add_geometry(self.eef_frame)
+
+        # for geom in self.init_geometries():
+        #     self.vis.add_geometry(geom)
+
+        # self.thread = threading.Thread(target=self.update, args=())
+        # self.thread.daemon = False
+        # self.thread.start()
+
+    def init_geometries(self):
+        # if self.curr_eff_pose is None or self.T_w2cam is None or self.T_w2tag is None or self.T_w2target is None:
+        #     return None, None, None, None, None, None
+        base_frame = self.create_base_frame()
+        grid = self.create_grid()
+        eff_frame = self.create_eef_frame()
+        camera_frame = self.create_camera_frame()
+        tag_frame = self.tag_frame()
+        target_frame = self.target_frame()
+        return base_frame, grid, eff_frame, camera_frame, tag_frame, target_frame
+
+    def create_base_frame(self):
+        base_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])  
+        return base_frame
+    
+    def create_eef_frame(self):
+        eff_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=self.curr_eff_pose[0:3])
+        rot_matrix = cv2.Rodrigues(np.array(self.curr_eff_pose[3:]))[0]
+        eff_frame.rotate(rot_matrix, center=self.curr_eff_pose[0:3])
+        return eff_frame
+
+    def create_camera_frame(self):
+        camera_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=self.T_w2cam[0:3,3])
+        camera_frame.rotate(self.T_w2cam[0:3,0:3])
+        return camera_frame
+    
+    def tag_frame(self):
+        tag_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=self.T_w2tag[0:3,3])
+        tag_frame.rotate(self.T_w2tag[0:3,0:3])
+        return tag_frame
+    
+    def target_frame(self):
+        target_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=self.T_w2target[0:3,3])
+        target_frame.rotate(self.T_w2target[0:3,0:3])
+        return target_frame
+
+    def create_grid(self,size=10, step=1):
+        lines = []
+        points = []
+
+        # Create grid points and lines in the X-Y plane
+        for i in range(-size, size + 1, step):
+            points.append([i, -size, 0])
+            points.append([i, size, 0])
+            points.append([-size, i, 0])
+            points.append([size, i, 0])
+            
+            lines.append([len(points) - 4, len(points) - 3])
+            lines.append([len(points) - 2, len(points) - 1])
+        
+        # Create grid points and lines in the X-Z plane
+        for i in range(-size, size + 1, step):
+            points.append([i, 0, -size])
+            points.append([i, 0, size])
+            points.append([-size, 0, i])
+            points.append([size, 0, i])
+            
+            lines.append([len(points) - 4, len(points) - 3])
+            lines.append([len(points) - 2, len(points) - 1])
+        
+        # Create grid points and lines in the Y-Z plane
+        for i in range(-size, size + 1, step):
+            points.append([0, i, -size])
+            points.append([0, i, size])
+            points.append([0, -size, i])
+            points.append([0, size, i])
+            
+            lines.append([len(points) - 4, len(points) - 3])
+            lines.append([len(points) - 2, len(points) - 1])
+
+        # Convert to numpy arrays
+        points = np.array(points)
+        lines = np.array(lines)
+
+        # Create line set
+        line_set = o3d.geometry.LineSet()
+        line_set.points = o3d.utility.Vector3dVector(points)
+        line_set.lines = o3d.utility.Vector2iVector(lines)
+
+        # Set color for the grid lines
+        colors = [[0.8, 0.8, 0.8] for _ in range(len(lines))]
+        line_set.colors = o3d.utility.Vector3dVector(colors)
+
+        return line_set
+
+    def update(self):
+        self.curr_eff_pose = self.robot.get_eff_pose()
+        robot_target, T_w2eef, T_w2cam, T_w2tag, T_w2target = self.detector.get_target_pose(self.curr_eff_pose,
+                                                                                                require_matrices=True)
+        self.robot_target = robot_target
+        self.T_w2eef = T_w2eef
+        self.T_w2cam = T_w2cam
+        self.T_w2tag = T_w2tag
+        self.T_w2target = T_w2target
+
+        self.base_frame = self.create_base_frame()
+        self.eef_frame = self.create_eef_frame()
+        
+        self.vis.update_geometry(self.eef_frame)
+        # for geom in self.init_geometries():
+        #     self.vis.update_geometry(geom)
+        self.vis.poll_events()
+        self.vis.update_renderer()
+
+    def stop(self):
+        self.vis.destroy_window()
+        self.running = False
+        # self.thread.join()
 
 if __name__=="__main__":
     rs_stream = Detector(visualization=True)
