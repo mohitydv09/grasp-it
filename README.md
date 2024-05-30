@@ -1,4 +1,5 @@
-Robust Grasping of Dynamic Objects
+# Robust Grasping of Dynamic Objects
+
 This is an ongoing project in the Robotics: Perception and Manipulation (RPM) group at the University of Minnesota.
 
 Project Overview
