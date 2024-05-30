@@ -8,5 +8,5 @@ The objective of this project is to develop a reliable system capable of graspin
 Current Status
 Visual servoing on the UR5e arm has been implemented. See the video below:
 
-https://github.com/mohitydv09/grasp-it/assets/101336175/a322d569-06df-4f5a-821b-6b28f18012ef
+https://github.com/mohitydv09/grasp-it/assets/101336175/8b7c70b1-8fc7-4326-9e4e-30ea3742664c
 
