@@ -91,13 +91,13 @@ class Detector:
             return None, None
         return rvecs, tvecs
 
-    def get_target_pose(self, curr_eef_pose, pre_grasp_distance=0.3, require_matrices=False):
+    def get_target_pose(self, curr_eef_pose, pre_grasp_distance=0.25, require_matrices=False):
         ## Transfromation Matrix from World to Eff.
         T_w2eef = self.make_matrix(curr_eef_pose[0:3], np.array(curr_eef_pose[3:]))
 
         ## Transformation Matrix from Eff to Camera.
-        trans_vector_eef2cam = np.array([0, -0.1, 0.02])
-        T_eef2cam = self.make_matrix_from_angle(trans_vector_eef2cam, 'x', -np.pi/12)
+        trans_vector_eef2cam = np.array([-0.01, -0.08, 0.01])   ## 8 cm in Y and 1 cm in Z
+        T_eef2cam = self.make_matrix_from_angle(trans_vector_eef2cam, 'x', -np.pi/12) ## 15 Degree
 
         T_w2cam = T_w2eef @ T_eef2cam
 
