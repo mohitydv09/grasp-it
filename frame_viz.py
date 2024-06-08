@@ -1,6 +1,6 @@
 import open3d as o3d
 import numpy as np
-import cv2``
+import cv2
 import rtde_receive
 import rtde_control
 
