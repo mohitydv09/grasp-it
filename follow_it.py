@@ -1,5 +1,6 @@
 import time
 import numpy as np
+import cv2
 
 import rtde_receive # type: ignore
 import rtde_control # type: ignore
@@ -57,7 +58,7 @@ LIGHTNING_HOME_EEF = [-0.2207, 0.1328, 0.5887, -1.2139, -1.2086, 1.206]
 
 ## Start RealSense Stream.
 robot = RobotController(lightning_ip="192.168.0.102", need_gripper=True,need_control=True)
-detector = Detector(visualization=False)
+detector = Detector(visualization=True)
 
 ## Wait to start Recieving Data.
 while True:
@@ -92,6 +93,7 @@ try:
                     # print("Timer Reset")
                 else:
                     print("Target Not Moving")
+                    pass
 
                 if time.time() - start_time > 5:
                     robot.controller.servoStop(ACCELERATION)

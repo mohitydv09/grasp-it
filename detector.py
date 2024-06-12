@@ -1,6 +1,7 @@
 import pyrealsense2 as rs
 import numpy as np
 import cv2
+import time
 import threading
 import open3d as o3d
 
@@ -26,9 +27,14 @@ class Detector:
         self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_50)
         self.aruco_params = cv2.aruco.DetectorParameters()
 
-        self.thread = threading.Thread(target=self.update, args=())
+        self.thread = threading.Thread(target = self.update, args=())
         self.thread.daemon = True
         self.thread.start()
+
+        if self.visualization == True:
+            self.thread_visualizer = threading.Thread(target = self.visualizer, args=())
+            self.thread_visualizer.daemon = True
+            self.thread_visualizer.start()
 
     def update(self):
         while self.running:
@@ -39,7 +45,7 @@ class Detector:
 
             if not color_frame or not depth_frame:
                 continue
-
+            
             self.color_image = np.asanyarray(color_frame.get_data())
             self.depth_image = np.asanyarray(depth_frame.get_data())
 
@@ -68,17 +74,17 @@ class Detector:
         rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners, self.aruco_size, self.intrinsics_matrix, self.distortion_matrix)
         # print(f"Detected {len(corners)} markers in frame, with {len(rejectedImgPoints)} rejected frames.")
 
-        if self.visualization:
-            ## Draw the detected markers
-            self.color_image = cv2.aruco.drawDetectedMarkers(self.color_image, corners, ids)
-            for i in range(len(rvecs)):
-                self.color_image = cv2.drawFrameAxes(self.color_image, self.intrinsics_matrix, self.distortion_matrix,
-                                                      rvecs[i], tvecs[i], length=0.01, thickness=1) ## Last parameter is the size of the axis.
+        # if self.visualization:
+        #     ## Draw the detected markers
+        #     self.color_image = cv2.aruco.drawDetectedMarkers(self.color_image, corners, ids)
+        #     for i in range(len(rvecs)):
+        #         self.color_image = cv2.drawFrameAxes(self.color_image, self.intrinsics_matrix, self.distortion_matrix,
+        #                                               rvecs[i], tvecs[i], length=0.01, thickness=1) ## Last parameter is the size of the axis.
 
-            ## Display the image
-            cv2.imshow("Image with Detection : ", self.color_image)
-            cv2.waitKey(0)
-            cv2.destroyAllWindows()
+        #     ## Display the image
+        #     cv2.imshow("Image with Detection : ", self.color_image)
+        #     cv2.waitKey(0)
+        #     cv2.destroyAllWindows()
 
         if rvecs is None:
             # print("No Aruco Marker Detected")
@@ -145,6 +151,16 @@ class Detector:
         T[0:3, 0:3] = o3d.geometry.get_rotation_matrix_from_xyz(axis_vector)
         T[0:3, 3] = tvec
         return T
+    
+    def visualizer(self):
+        while self.running:
+            if self.color_image is None:
+                black_image = np.zeros((480,640,3), dtype=np.uint8)
+                cv2.imshow("Color Image", black_image)
+            else:
+                print(np.max(self.color_image))
+                cv2.imshow("Color Image", self.color_image)
+            cv2.waitKey(1)
 
 class Open3dVisualizer:
     def __init__(self, detector, robot):
