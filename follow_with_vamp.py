@@ -31,16 +31,17 @@ class PyBulletSim:
 
     def build_env(self):
         ## Wall 
-        wall_center = [0,1,0.8544]
-        wall_orientation = [0, 0, 0]
-        wall_dimensions = [1, 2, 0.05]
-        self.add_cuboid(wall_dimensions, wall_center, wall_orientation, color = [1, 1, 1, 1])
+        # wall_center = [0,1,0.8544]
+        # wall_orientation = [0, 0, 0]
+        # wall_dimensions = [1, 2, 0.05]
+        # self.add_cuboid(wall_dimensions, wall_center, wall_orientation, color = [1, 1, 1, 1])
 
-        ## Table
-        table_center = [-0.71, 1 , 1]
-        table_orientation = [0, 0, 0]
-        table_dimensions = [0.1, 2, 1]
-        self.add_cuboid(table_dimensions, table_center, table_orientation, color = [1/2, 1/4, 0, 1])
+        # ## Table
+        # table_center = [-0.71, 1 , 1]
+        # table_orientation = [0, 0, 0]
+        # table_dimensions = [0.1, 2, 1]
+        # self.add_cuboid(table_dimensions, table_center, table_orientation, color = [1/2, 1/4, 0, 1])
+        pass
 
     def add_sphere(self, radius, position, color = [1, 0, 0, 1]):
         visual_shape_id = self.client.createVisualShape(pb.GEOM_SPHERE, radius=radius, rgbaColor=color)
@@ -81,7 +82,13 @@ class PyBulletSim:
         thunder_id = self.client.loadURDF(self.urdf_path, 
                                           ## Hand Cal : y = 736.6
                                           ## -0.01261909 -0.74350812  0.00501703
-                                            basePosition = [0.016, 0.725, 0.00501703],
+                                          ## Measured.
+                                            # basePosition = [-0.00635, 0.7366, 0.005],
+                                            # [sphere.x + 0.016 , sphere.y + 0.710, sphere.z + 0.005]
+                                            basePosition = [0.00, 0.700, 0.00501703], ## Seems to be working check with Vamp env.
+
+                                            # basePosition = [0.016, 0.720, 0.00501703],
+                                            # basePosition = [0.016, 0.725, 0.00501703],
                                             baseOrientation = [0.0, 0.0, 0.0, 1.0],
                                             useFixedBase=True,
                                             flags=pb.URDF_MAINTAIN_LINK_ORDER | pb.URDF_USE_SELF_COLLISION,
@@ -111,6 +118,23 @@ class PyBulletSim:
         self.running = False
         self.simulation_thread.join()
         self.client.disconnect()
+
+    def animate_path(self, path):
+        ## Stop the simulation.
+        self.running = False
+        while True:
+            try:
+                for pose in path:
+                    pose = pose.to_list()
+                    # pose[0] += np.pi/2
+                    thunder_pose = self.thunder_client.get_joint_angles()
+                    thunder_pose[0] -= np.pi/2
+                    self.set_joint_positions(pose, thunder_pose)
+                    self.client.stepSimulation()
+                    time.sleep(1/120)
+            except KeyboardInterrupt:
+                break
+        self.running = True
 
 class RobotController:
     def __init__(self, arm, need_control = False, need_gripper = False):
@@ -171,25 +195,25 @@ class VampPlanner:
         self.plan_settings, self.simp_settings =  \
         vamp.configure_robot_and_planner_with_kwargs(self.robot,
                                                     self.planning_algorithm)
-        self.enviroment = self.create_env()
+        # self.enviroment = self.create_env()
 
     def create_env(self):
         if self.arm.name == 'lightning':
             env = vamp.Environment()
 
-            ## Add Table
+            # Add Table
             table_center = [-0.71, 1 , 1]
             table_orientation = [0, 0, 0]
             table_dimensions = [0.1, 2, 1]
             table = vamp.Cuboid(table_center, table_orientation, table_dimensions)
             env.add_cuboid(table)
 
-            ## Wall
-            wall_center = [0,1,0.8544]
-            wall_orientation = [0, 0, 0]
-            wall_dimensions = [1, 2, 0.05]
-            wall = vamp.Cuboid(wall_center, wall_orientation, wall_dimensions)
-            env.add_cuboid(wall)
+            # Wall
+            # wall_center = [0,1,0.8544]
+            # wall_orientation = [0, 0, 0]
+            # wall_dimensions = [1, 2, 0.05]
+            # wall = vamp.Cuboid(wall_center, wall_orientation, wall_dimensions)
+            # env.add_cuboid(wall)
 
             ## Add thunder robot spheres.
             thunder_config = self.other_arm.get_joint_angles()
@@ -201,62 +225,121 @@ class VampPlanner:
                     = vamp.Sphere([sphere.x + 0.016, sphere.y + 0.725, sphere.z + 0.005], sphere.r)
                 env.add_sphere(sphere_translated_to_position)
 
+            # Add the end-effector attachment.
+            # camera_module_lightning = vamp.Attachment([0, -0.08, 0.05], [0, 0, 0, 1])
+            # camera_module_lightning.add_spheres([vamp.Sphere([0, 0, 0], 0.06)])
+            # env.attach(camera_module_lightning)
+
         return env
 
     def generate_path(self, goal):
         start = self.arm.get_joint_angles()
         start[0] += np.pi/2
 
-        # print("Plan Setttings : ", self.plan_settings)
-        # print("Simp Setttings : ", self.simp_settings)
-
-        planner = self.planner_module(start, goal, self.enviroment, self.plan_settings)
-        simplify = self.robot_module.simplify(planner.path, self.enviroment, self.simp_settings)
+        curr_environment = self.create_env()
+        planner = self.planner_module(start, goal, curr_environment, self.plan_settings)
+        if not planner.solved:
+            print("Planner not solved. Exiting.")
+            return None
+        simplify = self.robot_module.simplify(planner.path, curr_environment, self.simp_settings)
 
         simplified_path = simplify.path
         simplified_path.interpolate(self.robot_module.resolution())
 
-
-        print("Reached till numpy code.")
-        path_numpy = simplified_path.numpy()
-        # path_numpy = planner.path.numpy()
-        return path_numpy
+        return simplified_path
 
 ## Initialize the Robot Controllers
 lightning = RobotController('lightning', need_gripper=False, need_control=False)
 thunder = RobotController('thunder', need_gripper=False, need_control=False)
 
-## Activate Simulation
-sim = PyBulletSim('vamp/resources/ur5/ur5.urdf', lightning, thunder)
+# Activate Simulation
+# sim = PyBulletSim('vamp/resources/ur5/ur5.urdf', lightning, thunder)
 
 ## Initialize the Vamp Planner
 lightning_vamp_planner = VampPlanner(lightning, thunder)
 
-lightning_goal = [-2.831836525593893, -0.6182095569423218, -2.6038901805877686,
-                -0.023354844456054735, 1.6746294498443604, -0.09153873125185186]
+## Old goal 
+# lightning_goal = [-2.8318, -0.6182, -2.60389,
+#                 -0.02335, 1.67462, -0.09153]
+
+## Near the Table.
+lightning_goal = [-3.436719, -1.2075, -1.892,
+                    0.0010856, 1.864951, -0.0248]
+
 lightning_goal[0] += np.pi/2  # get_from_rtde + pi/2 for the first joint
 
 path = lightning_vamp_planner.generate_path(lightning_goal)
-print("Shape of the Path: ", path.shape)
+
+path = np.zeros((10, 6))
 
 # # Visualize the Path
-# path_sim = vpb.PyBulletSimulator('vamp/resources/ur5/ur5.urdf', vamp.ROBOT_JOINTS['ur5'], True)
-# thunder_config = thunder.get_joint_angles()
-# thunder_config[0] += 1.5*np.pi
-# thunder_spheres = lightning_vamp_planner.robot_module.fk(thunder_config)
+path_sim = vpb.PyBulletSimulator('vamp/resources/ur5/ur5.urdf', vamp.ROBOT_JOINTS['ur5'], True)
+thunder_config = thunder.get_joint_angles()
+thunder_config[0] += 1.5*np.pi
+thunder_spheres = lightning_vamp_planner.robot_module.fk(thunder_config)
 # for sphere in thunder_spheres:
-#     # sphere_translated_to_position\
-#     #     = vamp.Sphere([sphere.x + 0.016, sphere.y + 0.725, sphere.z + 0.005], sphere.r)
-#     path_sim.add_sphere(sphere.r, [sphere.x + 0.016, sphere.y + 0.725, sphere.z + 0.005])
-# path_sim.animate(path)
+#     path_sim.add_sphere(sphere.r, [sphere.x + 0.016 , sphere.y + 0.710, sphere.z + 0.005])
+
+## Spawn thunder at 0,0,0
+for sphere in thunder_spheres:
+    path_sim.add_sphere(sphere.r*2, [sphere.x, sphere.y, sphere.z])
+
+## Spawn Lightning at opposite side.
+light_config = lightning.get_joint_angles()
+light_config[0] += np.pi/2
+light_spheres = lightning_vamp_planner.robot_module.fk(light_config)
+# for sphere in light_spheres:
+#     path_sim.add_sphere(sphere.r, [sphere.x, sphere.y, sphere.z])
+for sphere in light_spheres:
+    path_sim.add_sphere(sphere.r*2, [sphere.x - 0.016, sphere.y - 0.710, sphere.z - 0.005])
+
+path_sim.add_cuboid([0.1, 3, 2], [-0.7, 0 , 1], [0, 0, 0], color = [1/2, 1/4, 0, 1])
+
+# attachment_sphere = path_sim.add_sphere(0.06, [0, 0, 0])
+# def callback(configuration):
+#     position, orientation_xyzw = lightning_vamp_planner.robot_module.eefk(configuration)
+#     attachment.set_ee_pose(position, orientation_xyzw)
+#     sphere = attachment.posed_spheres[0]
+#     path_sim.update_object_position(attachment_sphere, sphere.position)
+
+path_sim.animate(path)
 
 # input("Press Enter to Start the Path Execution.")
 
 # for pose in path:
 #     input("Press Enter to Move to Next Pose.")
-#     pose = pose.tolist()
+#     pose = pose.to_list()
 #     pose[0] -= np.pi/2
 #     lightning.controller.moveJ(pose, 0.1, 0.1)
 
-input("Press Enter to Exit the Simulation.")
-sim.stop()
+# input("Press Enter to Exit the Simulation.")
+# sim.stop()
+
+# # Start the Loop to go to object.
+# input("Press Enter to Start the Loop.")
+# start_time = time.time()
+# frame_count = 0
+# while True:
+#     try:
+#         path = lightning_vamp_planner.generate_path(lightning_goal)
+#         if path is None:
+#             frame_count += 1
+#             continue
+#         next_pose = path[1].to_list()
+#         next_pose[0] -= np.pi/2
+#         lightning.controller.servoJ(next_pose, 0.1, 0.1, 0.3, 0.2, 2000) 
+
+#         frame_count += 1
+#         print("FPS : ", frame_count/(time.time() - start_time))
+
+#     except KeyboardInterrupt:
+#         break
+
+#     except Exception as e:
+#         print("Error Occured : ", e)
+
+# # sim.stop()
+# print("Simulation Stopped.")
+
+# lightning.go_to_home()
+# thunder.go_to_home()

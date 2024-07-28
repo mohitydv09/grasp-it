@@ -158,7 +158,6 @@ class Detector:
                 black_image = np.zeros((480,640,3), dtype=np.uint8)
                 cv2.imshow("Color Image", black_image)
             else:
-                print(np.max(self.color_image))
                 cv2.imshow("Color Image", self.color_image)
             cv2.waitKey(1)
 
@@ -303,13 +302,18 @@ class Open3dVisualizer:
 
 if __name__=="__main__":
     rs_stream = Detector(visualization=True)
+    # while True:
+    #     color_image, depth_image, intrinsics_matrix = rs_stream.get_frame()
+    #     if color_image is None or depth_image is None:
+    #         continue
+    #     cv2.imshow("color", color_image)
+    #     cv2.imshow("depth", depth_image)
+    #     if cv2.waitKey(1) & 0xFF == ord('q'):
+    #         break
     while True:
-        color_image, depth_image, intrinsics_matrix = rs_stream.get_frame()
-        if color_image is None or depth_image is None:
-            continue
-        cv2.imshow("color", color_image)
-        cv2.imshow("depth", depth_image)
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        try:
+            pass
+        except KeyboardInterrupt:
             break
     rs_stream.stop()
     cv2.destroyAllWindows()

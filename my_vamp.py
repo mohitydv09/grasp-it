@@ -9,6 +9,13 @@ from urdfpy import URDF
 robot_urdf_path = 'vamp/resources/ur5/ur5.urdf'
 sim = vpb.PyBulletSimulator(robot_urdf_path, vamp.ROBOT_JOINTS['ur5'], True)
 
+robot_ = URDF.load(robot_urdf_path)
+for joint in robot_.joints:
+    print(joint.name)
+
+for joint in vamp.ROBOT_JOINTS['ur5']:
+    print(joint)
+
 lightning_module, planner_module, plan_settings, simp_settings = vamp.configure_robot_and_planner_with_kwargs('ur5', 'rrtc')
 #lightning_start = [-np.pi/2 , -np.pi*5/18, -np.pi*13/18, 0.0, np.pi/2, 0.0]
 lightning_start = [-2.6247716585742396, -0.9443705838969727, -1.6287304162979126,
@@ -25,9 +32,9 @@ lightning_goal[0] += np.pi/2  # get_from_rtde + pi/2 for the first joint
 thunder_module = vamp.configure_robot_and_planner_with_kwargs('ur5', 'rrtc')[0]
 ## Make config.
 # thunder_config = [-np.pi , -np.pi*13/18, np.pi*13/18, -np.pi, -np.pi/2, 0.0] ## Get from thunder + 1.5 Pi for the first joint
-# thunder_config = [-2.241622273121969, -0.9576506775668641, 0.8925235907184046,
-#                  -2.9204904041686, -0.804232422505514, -1.0714810530291956]
-thunder_config = [0,0,0,0,0,0]
+thunder_config = [-2.241622273121969, -0.9576506775668641, 0.8925235907184046,
+                 -2.9204904041686, -0.804232422505514, -1.0714810530291956]
+# thunder_config = [0,0,0,0,0,0]
 thunder_config[0] += 1.5*np.pi 
 
 ## Get the spheres.
@@ -46,16 +53,16 @@ def make_camera_sphere(sphere_wrist, sphere_right, sphere_left):
     return camera_sphere
 
 
-## Print Info.
-for i,sphere in enumerate(thunder_spheres):
-    print(type(sphere))
-    print(f"Sphere {i}: {sphere.x:.4f}, {sphere.y:.4f}, {sphere.z:.4f}, {sphere.r:.4f}")
+# ## Print Info.
+# for i,sphere in enumerate(thunder_spheres):
+#     print(type(sphere))
+#     print(f"Sphere {i}: {sphere.x:.4f}, {sphere.y:.4f}, {sphere.z:.4f}, {sphere.r:.4f}")
 
 
 
 lightning_env = vamp.Environment()
-camera_sphere = make_camera_sphere(thunder_spheres[21], thunder_spheres[25], thunder_spheres[35])
-thunder_spheres.append(camera_sphere)
+# camera_sphere = make_camera_sphere(thunder_spheres[21], thunder_spheres[25], thunder_spheres[35])
+# thunder_spheres.append(camera_sphere)
 for sphere in thunder_spheres:
     ## Translate the spheres to the desired position.
     sphere_translated_to_position = vamp.Sphere([sphere.x, sphere.y + 0.74350, sphere.z], sphere.r)
@@ -75,11 +82,12 @@ simplified_path.interpolate(lightning_module.resolution())
 
 print(type(simplified_path))
 
-path_numpy = np.zeros((len(simplified_path), 6))
-for i, path in enumerate(simplified_path):
-    path_numpy[i] = path.to_list()
+print(f"Path Length: {len(simplified_path)}")
+# path_numpy = np.zeros((len(simplified_path), 6))
+# for i, path in enumerate(simplified_path):
+#     path_numpy[i] = path.to_list()
 
-np.save('lightning_path.npy', path_numpy)
+# np.save('lightning_path.npy', path_numpy)
 
 sim.animate(simplified_path)
 
