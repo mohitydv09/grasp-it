@@ -74,18 +74,6 @@ class Detector:
         rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners, self.aruco_size, self.intrinsics_matrix, self.distortion_matrix)
         # print(f"Detected {len(corners)} markers in frame, with {len(rejectedImgPoints)} rejected frames.")
 
-        # if self.visualization:
-        #     ## Draw the detected markers
-        #     self.color_image = cv2.aruco.drawDetectedMarkers(self.color_image, corners, ids)
-        #     for i in range(len(rvecs)):
-        #         self.color_image = cv2.drawFrameAxes(self.color_image, self.intrinsics_matrix, self.distortion_matrix,
-        #                                               rvecs[i], tvecs[i], length=0.01, thickness=1) ## Last parameter is the size of the axis.
-
-        #     ## Display the image
-        #     cv2.imshow("Image with Detection : ", self.color_image)
-        #     cv2.waitKey(0)
-        #     cv2.destroyAllWindows()
-
         if rvecs is None:
             # print("No Aruco Marker Detected")
             return None, None

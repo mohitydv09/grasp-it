@@ -25,7 +25,9 @@ class RealSense:
 
         self.color_frame = None
         self.depth_frame = None
-        self.intrinsics = None
+        self.intrinsics = None              ## Initialized in the _initialize_pipeline function
+        self.distortion_coeffs = None       ## Initialized in the _initialize_pipeline function
+        self.distortion_model = None        ## Initialized in the _initialize_pipeline function
 
         # Initialize the camera pipeline
         self._initialize_pipeline()
@@ -63,6 +65,12 @@ class RealSense:
         # Start the pipeline with the configured streams
         self._pipeline.start(self._config)
 
+        ## Set the Intrinsics and Distortion Coefficients
+        rs_intrinsics = self._pipeline.get_active_profile().get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+        self.intrinsics = np.array([[rs_intrinsics.fx, 0, rs_intrinsics.ppx,],[0, rs_intrinsics.fy, rs_intrinsics.ppy,],[0,0,1]])
+        self.distortion_coeffs = np.array(rs_intrinsics.coeffs)
+        self.distortion_model = rs_intrinsics.model.name
+
     def _update(self) -> None:
         """
         Continuously updates the frames from the RealSense camera.
@@ -72,7 +80,6 @@ class RealSense:
 
             # Process depth and color frames if depth is enabled
             if self._depth:
-                print("Depth frames")
                 aligned_frames = self._align.process(frames)
                 color_frame = aligned_frames.get_color_frame()
                 depth_frame = aligned_frames.get_depth_frame()
@@ -85,10 +92,12 @@ class RealSense:
             # Convert depth frame to a NumPy array if depth is enabled
             if self._depth:
                 self.depth_frame = np.asanyarray(depth_frame.get_data())
-                self.intrinsics = self.depth_frame.profile.as_video_stream_profile().intrinsics
+                self.intrinsics = depth_frame.profile.as_video_stream_profile().intrinsics
+                # print(self.intrinsics.fx, self.intrinsics.fy, self.intrinsics.ppx, self.intrinsics.ppy)
 
             # Convert color frame to a NumPy array
             self.color_frame = np.asanyarray(color_frame.get_data(), dtype=np.uint8)
+
 
     def _visualize(self) -> None:
         """
@@ -103,6 +112,33 @@ class RealSense:
             cv2.waitKey(10)
         
         cv2.destroyAllWindows()
+
+    def get_color_frame(self) -> np.ndarray:
+        """
+        Returns the latest color frame from the RealSense camera.
+
+        Returns:
+        - np.ndarray: The latest color frame.
+        """
+        return self.color_frame
+    
+    def get_depth_frame(self) -> np.ndarray:
+        """
+        Returns the latest depth frame from the RealSense camera.
+
+        Returns:
+        - np.ndarray: The latest depth frame.
+        """
+        return self.depth_frame
+    
+    def get_intrinsics(self) -> rs.intrinsics:
+        """
+        Returns the intrinsics of the RealSense camera.
+
+        Returns:
+        - rs.intrinsics: The intrinsics of the RealSense camera.
+        """
+        return self.intrinsics
 
     def stop(self) -> None:
         """
@@ -126,7 +162,7 @@ def print_realsense_devices():
         print(device)
 
 if __name__ == "__main__":
-    realsense = RealSense(visualization=True)
+    realsense = RealSense(depth=False,visualization=True)
 
     try:
         while True:
