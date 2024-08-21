@@ -4,7 +4,7 @@ import threading
 import pyrealsense2 as rs # type: ignore
 import open3d as o3d # type: ignore
 
-import helper
+import utils
 
 class RealSense:
     def __init__(self, device_serial_number=None, visualization=False, depth=False) -> None:
@@ -205,11 +205,11 @@ class ArUcoDetector(RealSense):
         - list[6]: The target pose of the end effector relative to the detected marker.
         """
         ## Transfromation Matrix from World to Eff.
-        T_w2eef = helper.make_matrix_from_tvec_and_rvec(curr_eef_pose[0:3], curr_eef_pose[3:])
+        T_w2eef = utils.make_matrix_from_tvec_and_rvec(curr_eef_pose[0:3], curr_eef_pose[3:])
 
         ## Transformation Matrix from Eff to Camera.
         trans_vector_eef2cam = np.array([-0.01, -0.08, 0.01])   ## 8 cm in Y and 1 cm in Z
-        T_eef2cam = helper.make_matrix_from_tvec_axis_angle(trans_vector_eef2cam, 'x', -np.pi/12) ## 15 Degree
+        T_eef2cam = utils.make_matrix_from_tvec_axis_angle(trans_vector_eef2cam, 'x', -np.pi/12) ## 15 Degree
 
         T_w2cam = T_w2eef @ T_eef2cam
 
@@ -217,7 +217,7 @@ class ArUcoDetector(RealSense):
         if rvec is None or tvec is None:
             return None
 
-        T_cam2tag = helper.make_matrix_from_tvec_and_rvec(tvec, rvec)
+        T_cam2tag = utils.make_matrix_from_tvec_and_rvec(tvec, rvec)
         T_cam2tag[0:3, 0:3] = T_cam2tag[0:3, 0:3] @ o3d.geometry.get_rotation_matrix_from_xyz(np.array([np.pi, 0, 0]))
 
         T_w2tag = T_w2cam @ T_cam2tag
@@ -239,7 +239,6 @@ class ArUcoDetector(RealSense):
 
 if __name__=="__main__":
     aruco_detector = ArUcoDetector(tag_id=5, aruco_size=0.05, device_serial_number=None, visualization=True, depth=False)
-
     while True:
         try:
             if aruco_detector.color_frame is None:
