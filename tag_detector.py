@@ -1,14 +1,13 @@
-import pyrealsense2 as rs
+import cv2
 import numpy as np
 import threading
-import cv2
+import pyrealsense2 as rs # type: ignore
+import open3d as o3d # type: ignore
 
-# Constants for RealSense device serial numbers
-D405_SERIAL_NUMBER = '128422270081'
-D405_SERIAL_NUMBER2 = '126122270307'
+import helper
 
 class RealSense:
-    def __init__(self, depth=False, device_serial_number=None, visualization=False) -> None:
+    def __init__(self, device_serial_number=None, visualization=False, depth=False) -> None:
         """
         Initializes the RealSense camera interface.
 
@@ -98,7 +97,6 @@ class RealSense:
             # Convert color frame to a NumPy array
             self.color_frame = np.asanyarray(color_frame.get_data(), dtype=np.uint8)
 
-
     def _visualize(self) -> None:
         """
         Continuously displays the RealSense camera feed in a window.
@@ -152,21 +150,103 @@ class RealSense:
 
         self._pipeline.stop()
 
-def print_realsense_devices():
-    """
-    Prints all available RealSense devices connected to the system.
-    """
-    ctx = rs.context()
-    devices = ctx.query_devices()
-    for device in devices:
-        print(device)
 
-if __name__ == "__main__":
-    realsense = RealSense(depth=False,visualization=True)
+class ArUcoDetector(RealSense):
+    """
+    Extends the RealSense class to detect and estimate the pose of ArUco markers.
 
-    try:
-        while True:
-            pass
-    except KeyboardInterrupt:
-        realsense.stop()
-        print("RealSense stopped")
+    Inherits:
+    - RealSense: Inherits functionality for interfacing with the RealSense camera.
+    """
+    def __init__(self, tag_id:int=5, aruco_size:float = 0.05, device_serial_number:str=None, visualization:bool=False, depth:bool=False) -> None:
+        """
+        Initializes the ArUcoDetector class.
+
+        Parameters:
+        - tag_id (int): The ID of the ArUco marker to detect. Defaults to 5.
+        - aruco_size (float): The size of the ArUco marker in meters. Defaults to 0.05.
+        - device_serial_number (str): The serial number of the RealSense device to connect to. Defaults to None.
+        - visualization (bool): If True, displays the camera feed in a separate window. Defaults to False.
+        - depth (bool): If True, enables the depth stream alongside the color stream. Defaults to False.
+        """
+        super().__init__(device_serial_number, visualization, depth)
+        self._aruco_size = aruco_size
+        self._aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_50)
+        self._aruco_params = cv2.aruco.DetectorParameters()
+        self._tag_id = tag_id
+
+    def get_aruco_pose(self) -> tuple[list[3], list[3]]:
+        """
+        Detects the pose of the specified ArUco marker.
+
+        Returns:
+        - tuple[list[3], list[3]]: A tuple containing the rotation vector and translation vector of the detected marker.
+        """
+        corners, ids, _ = cv2.aruco.detectMarkers(self.color_frame, self._aruco_dict, parameters=self._aruco_params)
+        index_of_interest = np.where(ids == self._tag_id)
+        if ids is None:
+            return None, None
+        rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners, self._aruco_size, self.intrinsics, self.distortion_coeffs)
+
+        rvec = rvecs[index_of_interest][0]
+        tvec = tvecs[index_of_interest][0]
+
+        return rvec, tvec
+
+    def get_target_pose_with_curr_eff(self, curr_eef_pose : list[6], pre_grasp_distance : float = 0.25) -> list[6]:
+        """
+        Calculates the target pose of the robot's end effector relative to the detected ArUco marker.
+
+        Parameters:
+        - curr_eef_pose (list[6]): The current pose of the end effector (EEF) in the form [x, y, z, rx, ry, rz].
+        - pre_grasp_distance (float): The distance to maintain from the target object before grasping. Defaults to 0.25.
+
+        Returns:
+        - list[6]: The target pose of the end effector relative to the detected marker.
+        """
+        ## Transfromation Matrix from World to Eff.
+        T_w2eef = helper.make_matrix_from_tvec_and_rvec(curr_eef_pose[0:3], curr_eef_pose[3:])
+
+        ## Transformation Matrix from Eff to Camera.
+        trans_vector_eef2cam = np.array([-0.01, -0.08, 0.01])   ## 8 cm in Y and 1 cm in Z
+        T_eef2cam = helper.make_matrix_from_tvec_axis_angle(trans_vector_eef2cam, 'x', -np.pi/12) ## 15 Degree
+
+        T_w2cam = T_w2eef @ T_eef2cam
+
+        rvec, tvec = self.get_aruco_pose()
+        if rvec is None or tvec is None:
+            return None
+
+        T_cam2tag = helper.make_matrix_from_tvec_and_rvec(tvec, rvec)
+        T_cam2tag[0:3, 0:3] = T_cam2tag[0:3, 0:3] @ o3d.geometry.get_rotation_matrix_from_xyz(np.array([np.pi, 0, 0]))
+
+        T_w2tag = T_w2cam @ T_cam2tag
+
+        ## Make the Final Target Pose.
+        T_w2target = np.eye(4)
+        T_w2target[0:3, 0:3] = T_w2tag[0:3, 0:3]
+
+        approach_vector = T_w2target[0:3, 2]
+        norm_approach_vector = approach_vector/np.linalg.norm(approach_vector)
+        translate_vector = - pre_grasp_distance * norm_approach_vector
+
+        T_w2target[0:3, 3] = T_w2tag[0:3, 3] + translate_vector
+
+        robot_target = T_w2target[0:3,3].tolist() + cv2.Rodrigues(T_w2target[0:3,0:3])[0].reshape(-1).tolist()
+
+        return robot_target
+
+
+if __name__=="__main__":
+    aruco_detector = ArUcoDetector(tag_id=5, aruco_size=0.05, device_serial_number=None, visualization=True, depth=False)
+
+    while True:
+        try:
+            if aruco_detector.color_frame is None:
+                continue
+            robot_target_pose = aruco_detector.get_target_pose_with_curr_eff([0.5,0.0,0.0,0.0,0.0,0.0])
+            print(robot_target_pose)
+        except KeyboardInterrupt:
+            break
+    aruco_detector.stop()
+    cv2.destroyAllWindows()
