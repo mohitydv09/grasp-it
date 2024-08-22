@@ -20,7 +20,7 @@ class VAMP:
         self._table_orientation = TABLE_ORIENTATION
         self._table_dimensions = TABLE_DIMENSIONS
 
-    def create_env(self, arm_name:str, other_arm_config:list[6], fos:float = 2.0) -> vamp.Environment:
+    def create_env(self, arm_name:str, other_arm_config:list[6], fos:float = 2.0, model_camera:bool=False) -> vamp.Environment:
         env = vamp.Environment()
 
         ## Add Table
@@ -38,6 +38,15 @@ class VAMP:
             sphere_translated_to_position\
                 = vamp.Sphere([sphere.x + x_displacement, sphere.y + y_displacement, sphere.z + z_displacement], fos*sphere.r)
             env.add_sphere(sphere_translated_to_position)
+        
+        # if model_camera:
+        #     ## Self Camera Module.
+        #     camera_module = vamp.Attachment([[0, -0.08, 0.05], [0, 0, 0, 1]]) ## Pos, Orientation
+        #     camera_module.add_sphere(vamp.Sphere([0, 0, 0], 0.06))   ## 0.06 is attachment Radius
+        #     env.attach(camera_module)
+
+        #     ## Other arm's Camera Module.
+
 
         return env
 

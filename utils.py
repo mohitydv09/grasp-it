@@ -35,6 +35,15 @@ def move_pose_back(target: list[6], distance = 0.01) -> list[6]:
     target = pose_matrix[:3, 3].tolist() + cv2.Rodrigues(pose_matrix[:3, :3])[0].reshape(-1).tolist()
     return target
 
+def jitter_pose(target: list[6], distance = 0.01) -> list[6]:
+    random_jitter_x = np.random.uniform(-distance, distance)
+    random_jitter_y = np.random.uniform(-distance, distance)
+    random_jitter_z = np.random.uniform(-distance, distance)
+    target[0] += random_jitter_x
+    target[1] += random_jitter_y
+    target[2] += random_jitter_z
+    return target
+
 def predict_target_from_prev(prev_target_configs: list[list[6]]) -> list[6]:
     """
     Predict the next target configuration from the previous target configurations.
@@ -57,13 +66,4 @@ def predict_target_from_prev(prev_target_configs: list[list[6]]) -> list[6]:
 #     return pred_target
 
 if __name__ == "__main__":
-    data = np.zeros((100,6))
-    index = np.arange(100)
-    data[:,0] = index*1
-    data[:,1] = index*0.5
-    data[:,2] = index*1
-    data[:,3] = index*0.6
-    data[:,4] = index*0.7
-    data[:,5] = index*0.8
-
-    print(predict_target_from_prev(data))
+    print(np.random.uniform(-0.01, 0.01))

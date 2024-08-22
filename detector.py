@@ -1,108 +1,223 @@
-import pyrealsense2 as rs
-import numpy as np
 import cv2
-import time
+import numpy as np
 import threading
-import open3d as o3d
+import pyrealsense2 as rs # type: ignore
+import open3d as o3d # type: ignore
 
-class Detector:
-    def __init__(self, visualization=False):
-        self.pipeline = rs.pipeline()
-        self.config = rs.config()
-        self.config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
-        self.config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+import utils
 
-        self.align_to = rs.stream.color
-        self.align = rs.align(self.align_to)
-        self.running = True
+class RealSense:
+    def __init__(self, device_serial_number=None, visualization=False, depth=False) -> None:
+        """
+        Initializes the RealSense camera interface.
 
-        self.pipeline.start(self.config)
-        self.color_image = None
-        self.depth_image = None
-        self.intrinsics_matrix = None
-        self.distortion_matrix = None
-        self.visualization = visualization
+        Parameters:
+        - depth (bool): If True, enables depth stream alongside the color stream.
+        - device_serial_number (str): The serial number of the RealSense device to connect to.
+        - visualization (bool): If True, displays the camera feed in a separate window.
+        """
+        # Initialize instance variables
+        self._depth = depth
+        self._device_serial_number = device_serial_number
+        self._visualization = visualization
+        self._running = True
 
-        self.aruco_size = 0.05
-        self.aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_50)
-        self.aruco_params = cv2.aruco.DetectorParameters()
+        self.color_frame = None
+        self.depth_frame = None
+        self.intrinsics = None              ## Initialized in the _initialize_pipeline function
+        self.distortion_coeffs = None       ## Initialized in the _initialize_pipeline function
+        self.distortion_model = None        ## Initialized in the _initialize_pipeline function
 
-        self.thread = threading.Thread(target = self.update, args=())
-        self.thread.daemon = True
-        self.thread.start()
+        # Initialize the camera pipeline
+        self._initialize_pipeline()
 
-        if self.visualization == True:
-            self.thread_visualizer = threading.Thread(target = self.visualizer, args=())
-            self.thread_visualizer.daemon = True
-            self.thread_visualizer.start()
+        # Start a new thread to continuously update frames from the camera
+        self._update_thread = threading.Thread(target=self._update, args=())
+        self._update_thread.daemon = True
+        self._update_thread.start()
 
-    def update(self):
-        while self.running:
-            frames = self.pipeline.wait_for_frames()
-            aligned_frames = self.align.process(frames)
-            color_frame = aligned_frames.get_color_frame()
-            depth_frame = aligned_frames.get_depth_frame()
+        # Start a visualization thread if visualization is enabled
+        if self._visualization:
+            self._visualization_thread = threading.Thread(target=self._visualize, args=())
+            self._visualization_thread.daemon = True
+            self._visualization_thread.start()
 
-            if not color_frame or not depth_frame:
+    def _initialize_pipeline(self) -> None:
+        """
+        Initializes the RealSense pipeline and configures the streams.
+        """
+        self._pipeline = rs.pipeline()
+        self._config = rs.config()
+
+        # If a specific device serial number is provided, enable the device
+        if self._device_serial_number:
+            self._config.enable_device(self._device_serial_number)
+
+        # Enable the color stream
+        self._config.enable_stream(rs.stream.color, 640, 480, rs.format.bgr8, 30)
+
+        # Enable the depth stream if required
+        if self._depth:
+            self._config.enable_stream(rs.stream.depth, 640, 480, rs.format.z16, 30)
+            self._align = rs.align(rs.stream.color)  # Align depth to color stream
+
+        # Start the pipeline with the configured streams
+        self._pipeline.start(self._config)
+
+        ## Set the Intrinsics and Distortion Coefficients
+        rs_intrinsics = self._pipeline.get_active_profile().get_stream(rs.stream.color).as_video_stream_profile().get_intrinsics()
+        self.intrinsics = np.array([[rs_intrinsics.fx, 0, rs_intrinsics.ppx,],[0, rs_intrinsics.fy, rs_intrinsics.ppy,],[0,0,1]])
+        self.distortion_coeffs = np.array(rs_intrinsics.coeffs)
+        self.distortion_model = rs_intrinsics.model.name
+
+    def _update(self) -> None:
+        """
+        Continuously updates the frames from the RealSense camera.
+        """
+        while self._running:
+            frames = self._pipeline.wait_for_frames()
+
+            # Process depth and color frames if depth is enabled
+            if self._depth:
+                aligned_frames = self._align.process(frames)
+                color_frame = aligned_frames.get_color_frame()
+                depth_frame = aligned_frames.get_depth_frame()
+            else:
+                color_frame = frames.get_color_frame()
+
+            if not color_frame:
                 continue
             
-            self.color_image = np.asanyarray(color_frame.get_data())
-            self.depth_image = np.asanyarray(depth_frame.get_data())
+            # Convert depth frame to a NumPy array if depth is enabled
+            if self._depth:
+                self.depth_frame = np.asanyarray(depth_frame.get_data())
+                self.intrinsics = depth_frame.profile.as_video_stream_profile().intrinsics
+                # print(self.intrinsics.fx, self.intrinsics.fy, self.intrinsics.ppx, self.intrinsics.ppy)
 
-            depth_info = rs.video_stream_profile(depth_frame.get_profile())
-            intrinsics = depth_info.get_intrinsics()
-            intrinsics_matrix = np.array([[intrinsics.fx, 0, intrinsics.ppx],
-                                        [0, intrinsics.fy, intrinsics.ppy],
-                                        [0, 0, 1]])
-            self.intrinsics_matrix = intrinsics_matrix
+            # Convert color frame to a NumPy array
+            self.color_frame = np.asanyarray(color_frame.get_data(), dtype=np.uint8)
 
-    def get_frame(self):
-        return self.color_image, self.depth_image, self.intrinsics_matrix
-
-    def stop(self):
-        self.running = False
-        self.thread.join()
-        self.pipeline.stop()
+    def _visualize(self) -> None:
+        """
+        Continuously displays the RealSense camera feed in a window.
+        """
+        while self._running:
+            if self.color_frame is not None:
+                cv2.imshow('RealSense feed: ', self.color_frame)
+            else:
+                # Show a black screen if no color frame is available
+                cv2.imshow('RealSense feed: ', np.zeros((480, 640, 3), dtype=np.uint8))
+            cv2.waitKey(10)
+        
         cv2.destroyAllWindows()
 
-    def get_aruco_pose(self):
-        ## Detect Aruco Marker in the image
-        if self.color_image is None:
-            # print("No Image Detected")
-            return None,None
-        corners, ids, rejectedImgPoints = cv2.aruco.detectMarkers(self.color_image, self.aruco_dict, parameters=self.aruco_params)
-        rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners, self.aruco_size, self.intrinsics_matrix, self.distortion_matrix)
-        # print(f"Detected {len(corners)} markers in frame, with {len(rejectedImgPoints)} rejected frames.")
+    def get_color_frame(self) -> np.ndarray:
+        """
+        Returns the latest color frame from the RealSense camera.
 
-        if rvecs is None:
-            # print("No Aruco Marker Detected")
-            return None, None
-        if len(rvecs) == 0:
-            # print("No Aruco Marker Detected")
-            return None, None
-        if len(rvecs) > 1:
-            # print("More than one Aruco Marker Detected")
-            return None, None
-        return rvecs, tvecs
+        Returns:
+        - np.ndarray: The latest color frame.
+        """
+        return self.color_frame
+    
+    def get_depth_frame(self) -> np.ndarray:
+        """
+        Returns the latest depth frame from the RealSense camera.
 
-    def get_target_pose(self, curr_eef_pose, pre_grasp_distance=0.25, require_matrices=False):
+        Returns:
+        - np.ndarray: The latest depth frame.
+        """
+        return self.depth_frame
+    
+    def get_intrinsics(self) -> rs.intrinsics:
+        """
+        Returns the intrinsics of the RealSense camera.
+
+        Returns:
+        - rs.intrinsics: The intrinsics of the RealSense camera.
+        """
+        return self.intrinsics
+
+    def stop(self) -> None:
+        """
+        Stops the RealSense camera interface and associated threads.
+        """
+        self._running = False
+        self._update_thread.join()
+
+        if self._visualization:
+            self._visualization_thread.join()
+
+        self._pipeline.stop()
+
+
+class ArUcoDetector(RealSense):
+    """
+    Extends the RealSense class to detect and estimate the pose of ArUco markers.
+
+    Inherits:
+    - RealSense: Inherits functionality for interfacing with the RealSense camera.
+    """
+    def __init__(self, tag_id:int=5, aruco_size:float = 0.05, device_serial_number:str=None, visualization:bool=False, depth:bool=False) -> None:
+        """
+        Initializes the ArUcoDetector class.
+
+        Parameters:
+        - tag_id (int): The ID of the ArUco marker to detect. Defaults to 5.
+        - aruco_size (float): The size of the ArUco marker in meters. Defaults to 0.05.
+        - device_serial_number (str): The serial number of the RealSense device to connect to. Defaults to None.
+        - visualization (bool): If True, displays the camera feed in a separate window. Defaults to False.
+        - depth (bool): If True, enables the depth stream alongside the color stream. Defaults to False.
+        """
+        super().__init__(device_serial_number, visualization, depth)
+        self._aruco_size = aruco_size
+        self._aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_6X6_50)
+        self._aruco_params = cv2.aruco.DetectorParameters()
+        self._tag_id = tag_id
+
+    def get_aruco_pose(self) -> tuple[list[3], list[3]]:
+        """
+        Detects the pose of the specified ArUco marker.
+
+        Returns:
+        - tuple[list[3], list[3]]: A tuple containing the rotation vector and translation vector of the detected marker.
+        """
+        corners, ids, _ = cv2.aruco.detectMarkers(self.color_frame, self._aruco_dict, parameters=self._aruco_params)
+        index_of_interest = np.where(ids == self._tag_id)
+        if ids is None:
+            return None, None
+        rvecs, tvecs, _ = cv2.aruco.estimatePoseSingleMarkers(corners, self._aruco_size, self.intrinsics, self.distortion_coeffs)
+
+        rvec = rvecs[index_of_interest][0]
+        tvec = tvecs[index_of_interest][0]
+
+        return rvec, tvec
+
+    def get_target_pose_with_curr_eff(self, curr_eef_pose : list[6], pre_grasp_distance : float = 0.25) -> list[6]:
+        """
+        Calculates the target pose of the robot's end effector relative to the detected ArUco marker.
+
+        Parameters:
+        - curr_eef_pose (list[6]): The current pose of the end effector (EEF) in the form [x, y, z, rx, ry, rz].
+        - pre_grasp_distance (float): The distance to maintain from the target object before grasping. Defaults to 0.25.
+
+        Returns:
+        - list[6]: The target pose of the end effector relative to the detected marker.
+        """
         ## Transfromation Matrix from World to Eff.
-        T_w2eef = self.make_matrix(curr_eef_pose[0:3], np.array(curr_eef_pose[3:]))
+        T_w2eef = utils.make_matrix_from_tvec_and_rvec(curr_eef_pose[0:3], curr_eef_pose[3:])
 
         ## Transformation Matrix from Eff to Camera.
         trans_vector_eef2cam = np.array([-0.01, -0.08, 0.01])   ## 8 cm in Y and 1 cm in Z
-        T_eef2cam = self.make_matrix_from_angle(trans_vector_eef2cam, 'x', -np.pi/12) ## 15 Degree
+        T_eef2cam = utils.make_matrix_from_tvec_axis_angle(trans_vector_eef2cam, 'x', -np.pi/12) ## 15 Degree
 
         T_w2cam = T_w2eef @ T_eef2cam
 
-        rvecs, tvecs = self.get_aruco_pose()
-        if rvecs is None:
-            # print("Marker Detection Error")
-            return None, None, None, None, None
-        elif len(rvecs) > 1:
-            # print("More than one Marker Detected")
-            return None, None, None, None, None
-        T_cam2tag = self.make_matrix(tvecs[0][0], rvecs[0][0])
+        rvec, tvec = self.get_aruco_pose()
+        if rvec is None or tvec is None:
+            return None
+
+        T_cam2tag = utils.make_matrix_from_tvec_and_rvec(tvec, rvec)
         T_cam2tag[0:3, 0:3] = T_cam2tag[0:3, 0:3] @ o3d.geometry.get_rotation_matrix_from_xyz(np.array([np.pi, 0, 0]))
 
         T_w2tag = T_w2cam @ T_cam2tag
@@ -118,191 +233,19 @@ class Detector:
         T_w2target[0:3, 3] = T_w2tag[0:3, 3] + translate_vector
 
         robot_target = T_w2target[0:3,3].tolist() + cv2.Rodrigues(T_w2target[0:3,0:3])[0].reshape(-1).tolist()
-        if require_matrices:
-            return robot_target, T_w2eef, T_w2cam, T_w2tag, T_w2target
-        return robot_target, None, None, None, None
 
-    def make_matrix(self, tvec, rvec):
-        T = np.eye(4)
-        T[0:3, 0:3] = cv2.Rodrigues(rvec)[0]
-        T[0:3, 3] = tvec
-        return T
-    
-    def make_matrix_from_angle(self, tvec, axis, angle):
-        T = np.eye(4)
-        if axis == 'x':
-            axis_vector = np.array([angle, 0, 0])
-        elif axis == 'y':
-            axis_vector = np.array([0, angle, 0])
-        elif axis == 'z':
-            axis_vector = np.array([0, 0, angle])
-        T[0:3, 0:3] = o3d.geometry.get_rotation_matrix_from_xyz(axis_vector)
-        T[0:3, 3] = tvec
-        return T
-    
-    def visualizer(self):
-        while self.running:
-            if self.color_image is None:
-                black_image = np.zeros((480,640,3), dtype=np.uint8)
-                cv2.imshow("Color Image", black_image)
-            else:
-                cv2.imshow("Color Image", self.color_image)
-            cv2.waitKey(1)
+        return robot_target
 
-class Open3dVisualizer:
-    def __init__(self, detector, robot):
-        self.vis = o3d.visualization.Visualizer()
-        self.vis.create_window()
-        self.robot = robot
-        self.detector = detector
-        self.running = True
-
-
-        self.curr_eff_pose = self.robot.get_eff_pose()
-        robot_target, T_w2eef, T_w2cam, T_w2tag, T_w2target = self.detector.get_target_pose(self.curr_eff_pose, require_matrices=True)
-        self.robot_target = robot_target
-        self.T_w2eef = T_w2eef
-        self.T_w2cam = T_w2cam
-        self.T_w2tag = T_w2tag
-        self.T_w2target = T_w2target
-
-        self.base_frame = self.create_base_frame()
-        self.eef_frame = self.create_eef_frame()
-
-        self.vis.add_geometry(self.base_frame)
-        self.vis.add_geometry(self.eef_frame)
-
-        # for geom in self.init_geometries():
-        #     self.vis.add_geometry(geom)
-
-        # self.thread = threading.Thread(target=self.update, args=())
-        # self.thread.daemon = False
-        # self.thread.start()
-
-    def init_geometries(self):
-        # if self.curr_eff_pose is None or self.T_w2cam is None or self.T_w2tag is None or self.T_w2target is None:
-        #     return None, None, None, None, None, None
-        base_frame = self.create_base_frame()
-        grid = self.create_grid()
-        eff_frame = self.create_eef_frame()
-        camera_frame = self.create_camera_frame()
-        tag_frame = self.tag_frame()
-        target_frame = self.target_frame()
-        return base_frame, grid, eff_frame, camera_frame, tag_frame, target_frame
-
-    def create_base_frame(self):
-        base_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=[0, 0, 0])  
-        return base_frame
-    
-    def create_eef_frame(self):
-        eff_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=self.curr_eff_pose[0:3])
-        rot_matrix = cv2.Rodrigues(np.array(self.curr_eff_pose[3:]))[0]
-        eff_frame.rotate(rot_matrix, center=self.curr_eff_pose[0:3])
-        return eff_frame
-
-    def create_camera_frame(self):
-        camera_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=self.T_w2cam[0:3,3])
-        camera_frame.rotate(self.T_w2cam[0:3,0:3])
-        return camera_frame
-    
-    def tag_frame(self):
-        tag_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.1, origin=self.T_w2tag[0:3,3])
-        tag_frame.rotate(self.T_w2tag[0:3,0:3])
-        return tag_frame
-    
-    def target_frame(self):
-        target_frame = o3d.geometry.TriangleMesh.create_coordinate_frame(size=0.2, origin=self.T_w2target[0:3,3])
-        target_frame.rotate(self.T_w2target[0:3,0:3])
-        return target_frame
-
-    def create_grid(self,size=10, step=1):
-        lines = []
-        points = []
-
-        # Create grid points and lines in the X-Y plane
-        for i in range(-size, size + 1, step):
-            points.append([i, -size, 0])
-            points.append([i, size, 0])
-            points.append([-size, i, 0])
-            points.append([size, i, 0])
-            
-            lines.append([len(points) - 4, len(points) - 3])
-            lines.append([len(points) - 2, len(points) - 1])
-        
-        # Create grid points and lines in the X-Z plane
-        for i in range(-size, size + 1, step):
-            points.append([i, 0, -size])
-            points.append([i, 0, size])
-            points.append([-size, 0, i])
-            points.append([size, 0, i])
-            
-            lines.append([len(points) - 4, len(points) - 3])
-            lines.append([len(points) - 2, len(points) - 1])
-        
-        # Create grid points and lines in the Y-Z plane
-        for i in range(-size, size + 1, step):
-            points.append([0, i, -size])
-            points.append([0, i, size])
-            points.append([0, -size, i])
-            points.append([0, size, i])
-            
-            lines.append([len(points) - 4, len(points) - 3])
-            lines.append([len(points) - 2, len(points) - 1])
-
-        # Convert to numpy arrays
-        points = np.array(points)
-        lines = np.array(lines)
-
-        # Create line set
-        line_set = o3d.geometry.LineSet()
-        line_set.points = o3d.utility.Vector3dVector(points)
-        line_set.lines = o3d.utility.Vector2iVector(lines)
-
-        # Set color for the grid lines
-        colors = [[0.8, 0.8, 0.8] for _ in range(len(lines))]
-        line_set.colors = o3d.utility.Vector3dVector(colors)
-
-        return line_set
-
-    def update(self):
-        self.curr_eff_pose = self.robot.get_eff_pose()
-        robot_target, T_w2eef, T_w2cam, T_w2tag, T_w2target = self.detector.get_target_pose(self.curr_eff_pose,
-                                                                                                require_matrices=True)
-        self.robot_target = robot_target
-        self.T_w2eef = T_w2eef
-        self.T_w2cam = T_w2cam
-        self.T_w2tag = T_w2tag
-        self.T_w2target = T_w2target
-
-        self.base_frame = self.create_base_frame()
-        self.eef_frame = self.create_eef_frame()
-        
-        self.vis.update_geometry(self.eef_frame)
-        # for geom in self.init_geometries():
-        #     self.vis.update_geometry(geom)
-        self.vis.poll_events()
-        self.vis.update_renderer()
-
-    def stop(self):
-        self.vis.destroy_window()
-        self.running = False
-        # self.thread.join()
 
 if __name__=="__main__":
-    rs_stream = Detector(visualization=True)
-    # while True:
-    #     color_image, depth_image, intrinsics_matrix = rs_stream.get_frame()
-    #     if color_image is None or depth_image is None:
-    #         continue
-    #     cv2.imshow("color", color_image)
-    #     cv2.imshow("depth", depth_image)
-    #     if cv2.waitKey(1) & 0xFF == ord('q'):
-    #         break
+    aruco_detector = ArUcoDetector(tag_id=5, aruco_size=0.05, device_serial_number=None, visualization=True, depth=False)
     while True:
-        print("Updating")
         try:
-            pass
+            if aruco_detector.color_frame is None:
+                continue
+            robot_target_pose = aruco_detector.get_target_pose_with_curr_eff([0.5,0.0,0.0,0.0,0.0,0.0])
+            print(robot_target_pose)
         except KeyboardInterrupt:
             break
-    rs_stream.stop()
+    aruco_detector.stop()
     cv2.destroyAllWindows()
