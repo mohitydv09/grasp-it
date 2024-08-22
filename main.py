@@ -1,9 +1,15 @@
 import time
-
+import numpy as np
 import utils
+import sys
+import copy
+from collections import deque
 from robot import RobotController
 from tag_detector import ArUcoDetector, RealSense
+from pose_estimator import PoseEstimator
 from planner import VAMP
+
+
 
 SPEED = 0.1
 ACCELERATION = 0.1
@@ -11,9 +17,13 @@ DT = 0.3
 LOOKAHEAD_TIME = 0.2
 GAIN = 200
 
-tag_detector = ArUcoDetector(visualization=False)
+PREV_TARGETS = deque(maxlen=2)
+
+tag_detector = ArUcoDetector(visualization=True)
 lightning = RobotController('lightning', need_control=True, need_gripper=False)
+thunder = RobotController('thunder', need_control=False, need_gripper=False)
 vamp_panner = VAMP()
+# pose_estimator = PoseEstimator()
 
 ## Wait for Camera to Initialize and get the first frame.
 while True:
@@ -22,37 +32,56 @@ while True:
         break
 print("Camera Initialized")
 
+# lightning.go_home()
+
 ## Move to first location using MoveL.
 curr_eef_pose = lightning.reciever.getActualTCPPose()
 first_target_pose = tag_detector.get_target_pose_with_curr_eff(curr_eef_pose)
-
-## Move to the first target.
 input("Press Enter to Move to First Target")
 lightning.controller.moveL(first_target_pose, 0.1, 0.1)
 
+input("Press Enter to Start Following the Target")
 ## Start the Following Mode.
+OFFSET = 0.00
 while True:
     try:
-        time_start = time.time()
-        target_TCPPose = tag_detector.get_target_pose_with_curr_eff(lightning.reciever.getActualTCPPose())
-        pose_time = time.time()-time_start
-        print("Time to get Target Pose: ", pose_time)
-        target_joint_config = lightning.controller.getInverseKinematics(target_TCPPose)
-        ik_time = time.time()-time_start-pose_time
-        print("Time to get Inverse Kinematics: ", ik_time)
+        print("Offset: {}".format(OFFSET))
+        raw_target_eff_pose = tag_detector.get_target_pose_with_curr_eff(lightning.reciever.getActualTCPPose(), pre_grasp_distance=0.25)
 
-        ## Use VAMP Planner.
+        ## Marker was not found in the frame.
+        if raw_target_eff_pose is None:
+            print("Marker Not Found at {}".format(time.time()))
+            OFFSET = min(OFFSET + 0.01, 0.30)
+            target_eff_pose = utils.move_pose_back(PREV_TARGETS[-1], distance = OFFSET)
+        else:
+            PREV_TARGETS.append(raw_target_eff_pose)
+            OFFSET = max(OFFSET - 0.01, 0.00)
+            target_eff_pose = utils.move_pose_back(raw_target_eff_pose, distance = OFFSET)
 
-        path = vamp_panner.get_path("lightning", lightning.reciever.getActualQ(), target_joint_config, [0.0,0.0,0.0,0.0,0.0,0.0])
-        planning_time = time.time()-time_start-pose_time-ik_time
-        print("Time to Plan Path: ", planning_time)
-        next = path[1] if len(path) > 1 else path[0]
-        print("Length of Path: ", len(path))
-        lightning.controller.servoJ(next, SPEED, ACCELERATION, DT, LOOKAHEAD_TIME, GAIN)
-        # time.sleep(1)
-        # lightning.controller.servoL(next, SPEED, ACCELERATION, DT, LOOKAHEAD_TIME, GAIN)
-        # for waypoint in path:
-        #     lightning.controller.servoL(next, SPEED, ACCELERATION, DT, LOOKAHEAD_TIME, GAIN)
+        ## Collition Module.
+        while True:
+            target_joint_config = lightning.controller.getInverseKinematics(target_eff_pose)
+
+            if len(target_joint_config) == 0:
+                print("No IK Solution Found")
+                OFFSET = max(OFFSET - 0.01, 0.30)
+                target_eff_pose = utils.move_pose_back(raw_target_eff_pose, distance = OFFSET)
+
+            lightning_joint_config = copy.deepcopy(target_joint_config)
+            lightning_joint_config[0] += 0.5*np.pi
+            thunder_joint_config = thunder.reciever.getActualQ()
+            thunder_joint_config[0] += 1.5*np.pi
+            pose_validity = vamp_panner.pose_is_valid("lightning", lightning_joint_config, thunder_joint_config)
+            if pose_validity:
+                OFFSET = max(OFFSET - 0.01, 0.00)
+                break
+            else:
+                print("Pose is in Collision")
+                OFFSET = min(OFFSET + 0.01, 0.30)
+                target_eff_pose = utils.move_pose_back(raw_target_eff_pose, distance = OFFSET)
+
+        lightning.controller.servoJ(target_joint_config, SPEED, ACCELERATION, DT, LOOKAHEAD_TIME, GAIN)
+
     except KeyboardInterrupt:
         break
 

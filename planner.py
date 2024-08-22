@@ -20,7 +20,7 @@ class VAMP:
         self._table_orientation = TABLE_ORIENTATION
         self._table_dimensions = TABLE_DIMENSIONS
 
-    def create_env(self, arm_name:str, other_arm_config:list[6], fos:float = 2) -> vamp.Environment:
+    def create_env(self, arm_name:str, other_arm_config:list[6], fos:float = 2.0) -> vamp.Environment:
         env = vamp.Environment()
 
         ## Add Table
@@ -41,12 +41,12 @@ class VAMP:
 
         return env
 
-    def pose_is_valid(self, arm:str, lightning_config:list[6], thunder_config:list[6]) -> bool:
-        if arm == "Lightning":
-            curr_environment = self.create_env("Lightning", thunder_config)
+    def pose_is_valid(self, arm:str, lightning_config:list[6], thunder_config:list[6], fos:float=2.0) -> bool:
+        if arm == "lightning":
+            curr_environment = self.create_env("lightning", thunder_config)
             return self.robot.validate(lightning_config, curr_environment)
         else: ## arm == "Thunder"
-            curr_environment = self.create_env("Thunder", lightning_config)
+            curr_environment = self.create_env("thunder", lightning_config)
             return self.robot.validate(thunder_config, curr_environment)
         
     def get_path(self, arm:str, start_config:list[6], goal_config:list[6], other_arm_config:list[6]) -> list[list[6]]:

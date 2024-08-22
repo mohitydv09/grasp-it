@@ -1,4 +1,5 @@
 import numpy as np
+from statsmodels.tsa.arima.model import ARIMA
 import cv2
 
 def make_matrix_from_tvec_and_rvec(tvec : list, rvec : list):
@@ -23,3 +24,46 @@ def make_matrix_from_tvec_axis_angle(tvec : list, axis : str, angle : float):
         T[:3,:3] = cv2.Rodrigues(np.array([0, 0, angle]))[0]
     T[:3, 3] = tvec
     return T
+
+def move_pose_back(target: list[6], distance = 0.01) -> list[6]:
+    pose_matrix = make_matrix_from_tvec_and_rvec(target[:3], target[3:])
+    approach_vector = pose_matrix[:3, 2]
+    norm_approach_vector = approach_vector / np.linalg.norm(approach_vector)
+    translate_vector = - distance * norm_approach_vector
+    pose_matrix[:3, 3] = pose_matrix[:3, 3] + translate_vector
+
+    target = pose_matrix[:3, 3].tolist() + cv2.Rodrigues(pose_matrix[:3, :3])[0].reshape(-1).tolist()
+    return target
+
+def predict_target_from_prev(prev_target_configs: list[list[6]]) -> list[6]:
+    """
+    Predict the next target configuration from the previous target configurations.
+    """
+    diff = [prev_target_configs[1][i]-prev_target_configs[0][i] for i in range(6)]
+    pred_target = [prev_target_configs[1][i]+diff[i] for i in range(6)]
+    return pred_target
+
+# def predict_target_from_prev(prev_target_configs: list[list[6]]) -> list[6]:
+#     """
+#     Predict the next target configuration from the previous target configurations.
+#     """
+#     pred_target = [0 for i in range(6)]
+#     data_np = np.array(prev_target_configs)
+#     for i in range(6):
+#         model = ARIMA(data_np[:,i], order=(10,5,10))
+#         model_fit = model.fit()
+#         prediction = model_fit.forecast(steps=1)
+#         pred_target[i] = prediction[0]
+#     return pred_target
+
+if __name__ == "__main__":
+    data = np.zeros((100,6))
+    index = np.arange(100)
+    data[:,0] = index*1
+    data[:,1] = index*0.5
+    data[:,2] = index*1
+    data[:,3] = index*0.6
+    data[:,4] = index*0.7
+    data[:,5] = index*0.8
+
+    print(predict_target_from_prev(data))
