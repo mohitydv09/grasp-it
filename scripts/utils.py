@@ -1,5 +1,4 @@
 import numpy as np
-from statsmodels.tsa.arima.model import ARIMA
 import cv2
 
 def make_matrix_from_tvec_and_rvec(tvec : list, rvec : list):

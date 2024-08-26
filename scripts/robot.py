@@ -1,7 +1,7 @@
 import numpy as np
 import rtde_control # type: ignore
 import rtde_receive # type: ignore
-from gripper import RobotiqGripper
+from scripts.gripper import RobotiqGripper
 
 THUNDER_IP = '192.168.0.101'
 LIGHTNING_IP = '192.168.0.102'

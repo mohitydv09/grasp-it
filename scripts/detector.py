@@ -4,7 +4,7 @@ import threading
 import pyrealsense2 as rs # type: ignore
 import open3d as o3d # type: ignore
 
-import utils
+import scripts.utils as utils
 
 class RealSense:
     def __init__(self, device_serial_number=None, visualization=False, depth=False) -> None:
