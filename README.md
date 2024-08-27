@@ -1,12 +1,10 @@
-# Robust Grasping of Dynamic Objects
+# Grasping of Dynamic Objects in Dynamic Scenarios
 
-This is an ongoing project in the Robotics: Perception and Manipulation (RPM) group at the University of Minnesota.
+In this work, I explore the task of robot grasping of dynamic objects in dynamic scenarios. This involves reasoning about how to grasp the object, how to approach it while avoiding obstacles in the environment, and what actions to take in case of occlusion. I explored deep learning-based methods for grasp generation, such as [Contact GraspNet](https://github.com/NVlabs/contact_graspnet) and [AnyGrasp](https://github.com/graspnet/anygrasp_sdk). For path planning, we utilize the [Vector Accelerated Motion Planning](https://github.com/KavrakiLab/vamp) library, and for path execution, we use the Universal Robotics Real-Time Data Exchange library.
 
-Project Overview
-The objective of this project is to develop a reliable system capable of grasping dynamic objects in real-time.
+Demo Video:
 
-Current Status
-Visual servoing on the UR5e arm has been implemented. See the video below:
 
-https://github.com/mohitydv09/grasp-it/assets/101336175/8b7c70b1-8fc7-4326-9e4e-30ea3742664c
+
+High Quality youtube link: https://youtu.be/VPov_6SBYUI?si=Wg6_irLgLowPjzUs
 
