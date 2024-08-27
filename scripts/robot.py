@@ -8,6 +8,11 @@ LIGHTNING_IP = '192.168.0.102'
 THUNDER_HOME = [-np.pi , -np.pi*13/18, np.pi*13/18, -np.pi, -np.pi/2, 0.0]
 LIGHTNING_HOME = [-np.pi , -np.pi*5/18, -np.pi*13/18, 0.0, np.pi/2, 0.0]
 
+SPEED = 0.5
+ACCELERATION = 0.5
+DT = 0.1
+LOOKAHEAD_TIME = 0.2
+GAIN = 500
 
 class RobotController:
     def __init__(self, arm : str, need_control: bool = False, need_gripper: bool = False):
@@ -38,8 +43,14 @@ class RobotController:
                 break
         self.controller.endTeachMode()
 
+    def grasp_object(self):
+        self.gripper.set(255)
+
+    def release_object(self):
+        self.gripper.set(0)
+
     def go_home(self):
-        self.controller.moveJ(self.home, 0.1, 0.1)
+        self.controller.moveJ(self.home, SPEED, ACCELERATION)
 
 if __name__=="__main__":
     robot = RobotController('thunder', False, False)

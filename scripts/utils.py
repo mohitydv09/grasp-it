@@ -51,18 +51,11 @@ def predict_target_from_prev(prev_target_configs: list[list[6]]) -> list[6]:
     pred_target = [prev_target_configs[1][i]+diff[i] for i in range(6)]
     return pred_target
 
-# def predict_target_from_prev(prev_target_configs: list[list[6]]) -> list[6]:
-#     """
-#     Predict the next target configuration from the previous target configurations.
-#     """
-#     pred_target = [0 for i in range(6)]
-#     data_np = np.array(prev_target_configs)
-#     for i in range(6):
-#         model = ARIMA(data_np[:,i], order=(10,5,10))
-#         model_fit = model.fit()
-#         prediction = model_fit.forecast(steps=1)
-#         pred_target[i] = prediction[0]
-#     return pred_target
+def get_distance_between_poses(last_pose: list[6], target_pose: list[6]) -> float:
+    """
+    Get the distance between two poses, Currently only implemented to take only location in account.
+    """
+    return np.linalg.norm(np.array(last_pose[:3]) - np.array(target_pose[:3]))
 
 if __name__ == "__main__":
     print(np.random.uniform(-0.01, 0.01))

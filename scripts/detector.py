@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import threading
+import time
 import pyrealsense2 as rs # type: ignore
 import open3d as o3d # type: ignore
 
@@ -108,8 +109,6 @@ class RealSense:
                 # Show a black screen if no color frame is available
                 cv2.imshow('RealSense feed: ', np.zeros((480, 640, 3), dtype=np.uint8))
             cv2.waitKey(10)
-        
-        cv2.destroyAllWindows()
 
     def get_color_frame(self) -> np.ndarray:
         """
@@ -143,12 +142,14 @@ class RealSense:
         Stops the RealSense camera interface and associated threads.
         """
         self._running = False
-        self._update_thread.join()
-
+        time.sleep(0.1)
         if self._visualization:
             self._visualization_thread.join()
-
+        time.sleep(0.1)
+        self._update_thread.join()
+        
         self._pipeline.stop()
+        cv2.destroyAllWindows()
 
 
 class ArUcoDetector(RealSense):
