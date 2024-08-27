@@ -4,7 +4,7 @@ In this work, I explore the task of robot grasping of dynamic objects in dynamic
 
 Demo Video:
 
-
+https://github.com/user-attachments/assets/61f6fc06-4a51-4fe4-9765-d7613bb7fcd7
 
 High Quality youtube link: https://youtu.be/VPov_6SBYUI?si=Wg6_irLgLowPjzUs
 
