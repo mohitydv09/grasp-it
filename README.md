@@ -9,4 +9,4 @@ https://github.com/user-attachments/assets/4e8728d2-d6f4-4e52-bdba-780590025f26
 
 
 
-High Quality youtube link: [https://youtu.be/VPov_6SBYUI?si=Wg6_irLgLowPjzUs](https://youtu.be/NwPumwbW-5o)
+High Quality Video link: [Grasp-It Demo](https://youtu.be/NwPumwbW-5o)
