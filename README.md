@@ -10,3 +10,8 @@ https://github.com/user-attachments/assets/4e8728d2-d6f4-4e52-bdba-780590025f26
 
 
 High Quality Video link: [Grasp-It Demo](https://youtu.be/NwPumwbW-5o)
+
+
+Project Poster:
+
+![mohit_graspit](https://github.com/user-attachments/assets/5c720e86-9d0e-49b6-a05c-12ea7d0a3429)
